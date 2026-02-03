@@ -101,14 +101,21 @@ jobs:
         build-args: |
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
 
+          ghcr.io/${{ github.repository_owner }}/docker-qupath:latest
     - name: Create GitHub release
+    - name: Create GitHub release (using RELEASE_TOKEN)
+      if: secrets.RELEASE_TOKEN != ''
       uses: actions/create-release@v1
       with:
+        token: ${{ secrets.RELEASE_TOKEN }}
         tag_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         release_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         body: |
-          Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
+          Published image ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         draft: false
         prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Skip release creation (no RELEASE_TOKEN)
+      if: secrets.RELEASE_TOKEN == ''
+      run: |
+        echo 'No RELEASE_TOKEN secret found; skipping GitHub Release creation. To enable releases, add a repo-scoped PAT in the secret `RELEASE_TOKEN`.'
