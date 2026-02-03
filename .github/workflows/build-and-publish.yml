@@ -46,29 +46,11 @@ jobs:
             core.setOutput('asset_url', '');
           }
 
-    - name: Try download plugin jar from release assets
+    - name: Download plugin jar from release assets
       if: steps.get_plugin.outputs.asset_url != ''
       run: |
         echo "Downloading plugin from ${{ steps.get_plugin.outputs.asset_url }}"
         curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o qupath-extension-omero.jar "${{ steps.get_plugin.outputs.asset_url }}"
-
-    - name: Setup Java (for plugin build)
-      if: steps.get_plugin.outputs.asset_url == ''
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '17'
-
-    - name: Build OMERO plugin jar (fallback)
-      if: steps.get_plugin.outputs.asset_url == ''
-      run: |
-        echo "No jar asset found; checking out and building plugin"
-        git clone https://github.com/qupath/qupath-extension-omero.git plugin
-        cd plugin
-        git checkout "${{ steps.get_plugin.outputs.tag }}" || true
-        ./gradlew clean assemble -x test || ./gradlew clean build -x test
-        ls build/libs || true
-        cp build/libs/*.jar ../qupath-extension-omero.jar || true
 
     - name: Checkout current repository
       uses: actions/checkout@v4
@@ -89,7 +71,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        tags: ghcr.io/lavlabinfrastructure/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
         build-args: |
           QUPATH_IMAGE_VERSION=${{ env.QUPATH_IMAGE_VERSION }}
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
@@ -100,7 +82,7 @@ jobs:
         tag_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
         release_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
         body: |
-          Published image ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+          Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
         draft: false
         prerelease: false
       env:
