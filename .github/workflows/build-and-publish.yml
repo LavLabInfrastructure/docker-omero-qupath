@@ -24,7 +24,6 @@ jobs:
     - name: Get latest QuPath base image tag
       id: get_qupath
       run: |
-        apt-get update && apt-get install -y jq || true
         resp=$(curl -s 'https://quay.io/api/v1/repository/galaxy/qupath-headless/tag/?onlyActiveTags=true&limit=100')
         echo "$resp" | jq -r '.tags[].name' | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1 > /tmp/qtag || true
         if [ -s /tmp/qtag ]; then echo "tag=$(cat /tmp/qtag)" >> $GITHUB_OUTPUT; else echo "tag=latest" >> $GITHUB_OUTPUT; fi
@@ -34,13 +33,13 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        apt-get update && apt-get install -y jq || true
         owner=qupath
         repo=qupath-extension-omero
         api="https://api.github.com/repos/$owner/$repo/releases/latest"
         resp=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$api")
         tag=$(echo "$resp" | jq -r '.tag_name' | sed 's/^v//' )
-        asset_url=$(echo "$resp" | jq -r '.assets[]?.browser_download_url' | grep '\.jar$' || true)
+        # pick a single jar asset that is not a sources or javadoc jar
+        asset_url=$(echo "$resp" | jq -r '.assets[]? | select((.name|test("\\.jar$")) and (.name|test("sources")|not) and (.name|test("javadoc")|not)) | .browser_download_url' | head -n1 || true)
         if [ "$tag" = "null" ] || [ -z "$tag" ]; then
           sha=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$owner/$repo/commits/main" | jq -r '.sha' | cut -c1-7)
           tag=$sha
