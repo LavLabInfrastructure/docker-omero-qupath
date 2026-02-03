@@ -28,7 +28,6 @@ jobs:
       uses: actions/github-script@v6
       with:
         script: |
-          const core = require('@actions/core')
           const owner='qupath', repo='qupath-extension-omero';
           try {
             const r = await github.rest.repos.getLatestRelease({owner, repo});
