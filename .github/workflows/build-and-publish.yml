@@ -102,7 +102,7 @@ jobs:
         build-args: |
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
     - name: Create GitHub release (using RELEASE_TOKEN)
-      if: secrets.RELEASE_TOKEN != ''
+      if: ${{ secrets.RELEASE_TOKEN != '' }}
       uses: actions/create-release@v1
       with:
         token: ${{ secrets.RELEASE_TOKEN }}
@@ -114,6 +114,6 @@ jobs:
         prerelease: false
 
     - name: Skip release creation (no RELEASE_TOKEN)
-      if: secrets.RELEASE_TOKEN == ''
+      if: ${{ secrets.RELEASE_TOKEN == '' }}
       run: |
         echo 'No RELEASE_TOKEN secret found; skipping GitHub Release creation. To enable releases, add a repo-scoped PAT in the secret `RELEASE_TOKEN`.'
