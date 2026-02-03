@@ -99,19 +99,19 @@ jobs:
           ghcr.io/lavlabinfrastructure/docker-qupath:latest
         build-args: |
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
-    - name: Create GitHub release (using RELEASE_TOKEN)
-      if: ${{ secrets.RELEASE_TOKEN != '' }}
-      uses: actions/create-release@v1
-      with:
-        token: ${{ secrets.RELEASE_TOKEN }}
-        tag_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
-        release_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
-        body: |
-          Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
-        draft: false
-        prerelease: false
-
-    - name: Skip release creation (no RELEASE_TOKEN)
-      if: ${{ secrets.RELEASE_TOKEN == '' }}
+    - name: Create GitHub release (if RELEASE_TOKEN set)
+      env:
+        RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
       run: |
-        echo 'No RELEASE_TOKEN secret found; skipping GitHub Release creation. To enable releases, add a repo-scoped PAT in the secret `RELEASE_TOKEN`.'
+        if [ -z "$RELEASE_TOKEN" ]; then
+          echo 'No RELEASE_TOKEN secret found; skipping GitHub Release creation. To enable releases, add a repo-scoped PAT in the secret `RELEASE_TOKEN`.'
+          exit 0
+        fi
+        tag="${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}"
+        body="Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}"
+        payload=$(jq -n --arg tag "$tag" --arg name "$tag" --arg body "$body" '{tag_name:$tag, name:$name, body:$body, draft:false, prerelease:false}')
+        curl -s -X POST \
+          -H "Authorization: token $RELEASE_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${{ github.repository }}/releases" \
+          -d "$payload"
