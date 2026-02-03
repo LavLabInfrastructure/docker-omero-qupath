@@ -14,4 +14,4 @@ RUN set -eux; \
         sed -i '/^\[Application\]$/a app.classpath=\$APPDIR/qupath-extension.jar' "$cfg"; \
     fi
 
-# Keep base image behavior (do not override entrypoint/CMD)
+RUN apt-get update && apt-get install -y curl
