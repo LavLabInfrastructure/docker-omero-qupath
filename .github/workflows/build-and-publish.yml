@@ -98,11 +98,9 @@ jobs:
         push: true
         tags: |
           ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
+          ghcr.io/lavlabinfrastructure/docker-qupath:latest
         build-args: |
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
-
-          ghcr.io/lavlabinfrastructure/docker-qupath:latest
-    - name: Create GitHub release
     - name: Create GitHub release (using RELEASE_TOKEN)
       if: secrets.RELEASE_TOKEN != ''
       uses: actions/create-release@v1
