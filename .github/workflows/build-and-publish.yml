@@ -23,6 +23,107 @@ jobs:
       QUPATH_IMAGE_VERSION: ${{ github.event.inputs.qupath_version || 'latest' }}
 
     steps:
+    - name: Get latest OMERO plugin release info
+      id: get_plugin
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const core = require('@actions/core')
+          const owner='qupath', repo='qupath-extension-omero';
+          try {
+            const r = await github.rest.repos.getLatestRelease({owner, repo});
+            const tag = r.data.tag_name.replace(/^v/,'');
+            let asset_url = '';
+            if (r.data.assets && r.data.assets.length > 0) {
+              const jar = r.data.assets.find(a => a.name.endsWith('.jar'));
+              if (jar) asset_url = jar.browser_download_url;
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('asset_url', asset_url);
+          } catch (e) {
+            const r = await github.rest.repos.getCommit({owner, repo, ref:'main'});
+            const tag = r.data.sha.substring(0,7);
+            core.setOutput('tag', tag);
+            core.setOutput('asset_url', '');
+          }
+
+    - name: Try download plugin jar from release assets
+      if: steps.get_plugin.outputs.asset_url != ''
+      run: |
+        echo "Downloading plugin from ${{ steps.get_plugin.outputs.asset_url }}"
+        curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o qupath-extension-omero.jar "${{ steps.get_plugin.outputs.asset_url }}"
+
+    - name: Build OMERO plugin jar (fallback)
+      if: steps.get_plugin.outputs.asset_url == ''
+      run: |
+        echo "No jar asset found; checking out and building plugin"
+        git clone https://github.com/qupath/qupath-extension-omero.git plugin
+        cd plugin
+        git checkout "${{ steps.get_plugin.outputs.tag }}" || true
+        ./gradlew clean assemble -x test || ./gradlew clean build -x test
+        ls build/libs || true
+        cp build/libs/*.jar ../qupath-extension-omero.jar || true
+
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+
+    - name: Ensure plugin jar in build context
+      run: |
+        if [ -f qupath-extension-omero.jar ]; then echo "plugin jar already present"; else cp plugin/build/libs/*.jar ./qupath-extension-omero.jar || true; fi
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        build-args: |
+          QUPATH_IMAGE_VERSION=${{ env.QUPATH_IMAGE_VERSION }}
+          OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
+
+    - name: Create GitHub release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        release_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        body: |
+          Published image ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+name: Build and publish QuPath + OMERO plugin
+
+on:
+  workflow_dispatch:
+    inputs:
+      qupath_version:
+        description: 'QuPath base image tag (quay.io/galaxy/qupath-headless)'
+        required: false
+        default: 'latest'
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      QUPATH_IMAGE_VERSION: ${{ github.event.inputs.qupath_version || 'latest' }}
+
+    steps:
     - name: Get latest OMERO plugin release tag
       id: get_plugin
       uses: actions/github-script@v6
