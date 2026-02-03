@@ -23,6 +23,18 @@ jobs:
       QUPATH_IMAGE_VERSION: ${{ github.event.inputs.qupath_version || 'latest' }}
 
     steps:
+    - name: Checkout current repository
+      uses: actions/checkout@v4
+
+    - name: Get latest QuPath base image tag
+      id: get_qupath
+      run: |
+        if [ -n "${{ github.event.inputs.qupath_version }}" ]; then echo "tag=${{ github.event.inputs.qupath_version }}" >> $GITHUB_OUTPUT; exit 0; fi
+        apt-get update && apt-get install -y jq || true
+        resp=$(curl -s 'https://quay.io/api/v1/repository/galaxy/qupath-headless/tag/?onlyActiveTags=true&limit=100')
+        echo "$resp" | jq -r '.tags[].name' | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1 > /tmp/qtag || true
+        if [ -s /tmp/qtag ]; then echo "tag=$(cat /tmp/qtag)" >> $GITHUB_OUTPUT; else echo "tag=latest" >> $GITHUB_OUTPUT; fi
+
     - name: Get latest OMERO plugin release info
       id: get_plugin
       uses: actions/github-script@v6
@@ -52,8 +64,23 @@ jobs:
         echo "Downloading plugin from ${{ steps.get_plugin.outputs.asset_url }}"
         curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o qupath-extension-omero.jar "${{ steps.get_plugin.outputs.asset_url }}"
 
-    - name: Checkout current repository
-      uses: actions/checkout@v4
+    - name: Setup Java (for plugin build)
+      if: steps.get_plugin.outputs.asset_url == ''
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Build OMERO plugin jar (fallback)
+      if: steps.get_plugin.outputs.asset_url == ''
+      run: |
+        echo "No jar asset found; checking out and building plugin"
+        git clone --depth 1 https://github.com/qupath/qupath-extension-omero.git plugin || true
+        cd plugin
+        git checkout "${{ steps.get_plugin.outputs.tag }}" || true
+        ./gradlew clean assemble -x test || ./gradlew clean build -x test
+        ls build/libs || true
+        cp build/libs/*.jar ../qupath-extension-omero.jar || true
 
     - name: Ensure plugin jar in build context
       run: |
@@ -71,18 +98,19 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/lavlabinfrastructure/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         build-args: |
-          QUPATH_IMAGE_VERSION=${{ env.QUPATH_IMAGE_VERSION }}
+          QUPATH_IMAGE_VERSION=${{ steps.get_qupath.outputs.tag }}
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
 
     - name: Create GitHub release
       uses: actions/create-release@v1
       with:
-        tag_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
-        release_name: ${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+        tag_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
+        release_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         body: |
-          Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ env.QUPATH_IMAGE_VERSION }}-${{ steps.get_plugin.outputs.tag }}
+          Published image ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         draft: false
         prerelease: false
       env:
