@@ -99,7 +99,7 @@ jobs:
         context: .
         push: true
         tags: |
-          ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
+          ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         build-args: |
           QUPATH_IMAGE_VERSION=${{ steps.get_qupath.outputs.tag }}
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
@@ -110,7 +110,7 @@ jobs:
         tag_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         release_name: ${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         body: |
-          Published image ghcr.io/${{ github.repository_owner }}/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
+          Published image ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         draft: false
         prerelease: false
       env:
