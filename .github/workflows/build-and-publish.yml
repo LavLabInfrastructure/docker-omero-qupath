@@ -1,12 +1,7 @@
 name: Build and publish QuPath + OMERO plugin
 
 on:
-  workflow_dispatch:
-    inputs:
-      qupath_version:
-        description: 'QuPath base image tag (quay.io/galaxy/qupath-headless)'
-        required: false
-        default: 'latest'
+  workflow_dispatch: {}
   push:
     branches: [ main ]
   schedule:
@@ -29,7 +24,6 @@ jobs:
     - name: Get latest QuPath base image tag
       id: get_qupath
       run: |
-        if [ -n "${{ github.event.inputs.qupath_version }}" ]; then echo "tag=${{ github.event.inputs.qupath_version }}" >> $GITHUB_OUTPUT; exit 0; fi
         apt-get update && apt-get install -y jq || true
         resp=$(curl -s 'https://quay.io/api/v1/repository/galaxy/qupath-headless/tag/?onlyActiveTags=true&limit=100')
         echo "$resp" | jq -r '.tags[].name' | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -n1 > /tmp/qtag || true
@@ -37,26 +31,23 @@ jobs:
 
     - name: Get latest OMERO plugin release info
       id: get_plugin
-      uses: actions/github-script@v6
-      with:
-        script: |
-          const owner='qupath', repo='qupath-extension-omero';
-          try {
-            const r = await github.rest.repos.getLatestRelease({owner, repo});
-            const tag = r.data.tag_name.replace(/^v/,'');
-            let asset_url = '';
-            if (r.data.assets && r.data.assets.length > 0) {
-              const jar = r.data.assets.find(a => a.name.endsWith('.jar'));
-              if (jar) asset_url = jar.browser_download_url;
-            }
-            core.setOutput('tag', tag);
-            core.setOutput('asset_url', asset_url);
-          } catch (e) {
-            const r = await github.rest.repos.getCommit({owner, repo, ref:'main'});
-            const tag = r.data.sha.substring(0,7);
-            core.setOutput('tag', tag);
-            core.setOutput('asset_url', '');
-          }
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        apt-get update && apt-get install -y jq || true
+        owner=qupath
+        repo=qupath-extension-omero
+        api="https://api.github.com/repos/$owner/$repo/releases/latest"
+        resp=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "$api")
+        tag=$(echo "$resp" | jq -r '.tag_name' | sed 's/^v//' )
+        asset_url=$(echo "$resp" | jq -r '.assets[]?.browser_download_url' | grep '\.jar$' || true)
+        if [ "$tag" = "null" ] || [ -z "$tag" ]; then
+          sha=$(curl -s -H "Authorization: token $GITHUB_TOKEN" "https://api.github.com/repos/$owner/$repo/commits/main" | jq -r '.sha' | cut -c1-7)
+          tag=$sha
+          asset_url=''
+        fi
+        echo "tag=$tag" >> $GITHUB_OUTPUT
+        echo "asset_url=$asset_url" >> $GITHUB_OUTPUT
 
     - name: Download plugin jar from release assets
       if: steps.get_plugin.outputs.asset_url != ''
@@ -93,6 +84,14 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Pin QuPath base image in Dockerfile
+      run: |
+        echo '--- Dockerfile before pinning ---'
+        sed -n '1,120p' Dockerfile || true
+        sed -i.bak -E "s|FROM quay.io/galaxy/qupath-headless:.*|FROM quay.io/galaxy/qupath-headless:${{ steps.get_qupath.outputs.tag }}|" Dockerfile
+        echo '--- Dockerfile after pinning ---'
+        sed -n '1,120p' Dockerfile || true
+
     - name: Build and push image
       uses: docker/build-push-action@v4
       with:
@@ -101,7 +100,6 @@ jobs:
         tags: |
           ghcr.io/lavlabinfrastructure/docker-qupath:${{ steps.get_qupath.outputs.tag }}-${{ steps.get_plugin.outputs.tag }}
         build-args: |
-          QUPATH_IMAGE_VERSION=${{ steps.get_qupath.outputs.tag }}
           OMERO_PLUGIN_VERSION=${{ steps.get_plugin.outputs.tag }}
 
     - name: Create GitHub release

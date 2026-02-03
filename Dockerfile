@@ -1,6 +1,5 @@
-ARG QUPATH_IMAGE_VERSION=latest
 ARG OMERO_PLUGIN_VERSION=dev
-FROM quay.io/galaxy/qupath-headless:${QUPATH_IMAGE_VERSION}
+FROM quay.io/galaxy/qupath-headless:__QUPATH_TAG__
 
 LABEL maintainer=""
 
